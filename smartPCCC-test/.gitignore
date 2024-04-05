@@ -1,0 +1,27 @@
+.DS_Store
+node_modules
+
+# frontend
+frontend/dist
+
+# api
+.storage
+models
+
+# local env files
+.env
+.env.*.local
+config.yml
+package-lock.json
+
+*.log
+*.pid
+*.db
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

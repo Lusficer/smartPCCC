@@ -1,0 +1,122 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - '*'
+  workflow_dispatch:
+    
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: ['']
+      fail-fast: false
+    steps:
+    - id: lowercaseRepo
+      uses: ASzc/change-string-case-action@v6
+      with:
+        string: ${{ github.repository }}
+    - name: Check out code
+      uses: actions/checkout@v4
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Log in to the DockerHub
+      uses: docker/login-action@v3
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Create short sha and tag
+      shell: bash
+      run: |
+        echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        if [[ "$GITHUB_REF" == "refs/heads/beta" ]]; then echo TAG=beta; else echo TAG="latest"; fi >> $GITHUB_ENV
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        images: |
+          ghcr.io/${{ steps.lowercaseRepo.outputs.lowercase }}
+          ${{ steps.lowercaseRepo.outputs.lowercase }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=tag
+          type=pep440,pattern={{version}}
+          type=pep440,pattern={{major}}.{{minor}}
+          type=pep440,pattern={{major}}
+          type=sha,enable=${{ matrix.target != '' }},prefix=,suffix=-${{ matrix.target }},format=short
+          type=sha,enable=${{ matrix.target == '' }},prefix=sha-,suffix=,format=short
+        flavor: |
+          latest=${{ matrix.target == '' && github.ref == 'refs/heads/main' }}
+          suffix=${{ matrix.target }}
+    - name: Build Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: .build/Dockerfile
+        target: ${{ matrix.target }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        platforms: linux/amd64,linux/arm64,linux/arm/v7
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    - name: Sync
+      uses: ms-jpq/sync-dockerhub-readme@v1
+      if: github.ref == 'refs/heads/beta'
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        repository:  ${{ steps.lowercaseRepo.outputs.lowercase }}
+        readme: "./README.md"
+      
+    - name: poco
+      run: |
+        cd .build/bundle
+        rm -rf assets*
+        docker create --platform linux/arm/v7 --name double-take-armv7 ${{ github.actor }}/double-take:$TAG
+        docker export double-take-armv7 | xz > assets.tar.xz
+        docker rm double-take-armv7
+
+        go mod tidy
+        GOARCH="arm" GOARM=7 CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o double-take-armv7
+
+        rm -rf assets*
+        docker create --platform linux/arm64 --name double-take-arm64 ${{ github.actor }}/double-take:$TAG
+        docker export double-take-arm64 | xz > assets.tar.xz
+        docker rm double-take-arm64
+
+        GOARCH="arm64" CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o double-take-arm64
+        
+        rm -rf assets*
+        docker create --platform linux/amd64 --name double-take-amd64 ${{ github.actor }}/double-take:${{ env.TAG }}
+        docker export double-take-amd64 | xz > assets.tar.xz
+        docker rm double-take-amd64
+
+        GOARCH="amd64" CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o double-take-amd64
+        
+    - name: Upload Artifacts armv7
+      uses: actions/upload-artifact@v3
+      with:
+        name: double-take-armv7
+        path: .build/bundle/double-take-armv7
+    - name: Upload Artifacts arm64
+      uses: actions/upload-artifact@v3
+      with:
+        name: double-take-arm64
+        path: .build/bundle/double-take-arm64
+    - name: Upload Artifacts amd64
+      uses: actions/upload-artifact@v3
+      with:
+        name: double-take-amd64
+        path: .build/bundle/double-take-amd64

@@ -1,0 +1,54 @@
+version: '3.7'
+
+#volumes:
+#  double-take:
+# deepstack:
+# compreface:
+
+services:
+  double-take:
+    container_name: smartpccc-test
+    #image: jakowenko/double-take:1.12.1
+    image: smartpccc
+    restart: always
+    volumes:
+      - ./storage-hoang:/.storage
+    ports:
+      - 3026:3000
+
+  deepstack:
+    container_name: smartpccc-deepstack
+    restart: always
+    image: deepquestai/deepstack:gpu-2022.01.1
+    #    image: deepquestai/deepstack:cpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              #              count: 1
+              device_ids: ['0']
+              capabilities: [gpu]
+    #runtime: nvidia
+    ports:
+      - '5008:5000'
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+      - /dev/dri:/dev/dri
+    volumes:
+      - /srv/vms/smartplates/smartplates-qtsc/datastore:/datastore
+      - /root/Devel/deepstack-ui/Data/pytorch-models:/modelstore/detection
+
+  restarter:
+    image: docker:cli
+    restart: unless-stopped
+    volumes: ['/var/run/docker.sock:/var/run/docker.sock']
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        while true; do
+          if [ "$$(date +'%H:%M')" = '05:15' ]; then
+            docker restart smartpccc
+          fi
+          sleep 60
+        done

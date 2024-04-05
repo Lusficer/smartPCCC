@@ -1,0 +1,13 @@
+*
+
+!.build/entrypoint.sh
+!frontend/*
+!api/*
+!recognizer/*
+
+*/node_modules
+*/.DS_Store
+api/.*
+
+*/models
+*/.storage

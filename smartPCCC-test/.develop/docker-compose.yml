@@ -1,0 +1,31 @@
+version: '3.7'
+
+#volumes:
+#  double-take:
+  # deepstack:
+  # compreface:
+
+services:
+  double-take:
+    container_name: smartpccc-test
+    #image: jakowenko/double-take:1.12.1
+    image: smartpccc
+    restart: always
+    volumes:
+      - /srv/vms/media/smartpccc:/.storage
+    ports:
+      - 3026:3000
+
+  restarter:
+    image: docker:cli
+    restart: unless-stopped
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    entrypoint: ["/bin/sh","-c"]
+    command:
+      - |
+        while true; do
+          if [ "$$(date +'%H:%M')" = '05:15' ]; then
+            docker restart smartpccc
+          fi
+          sleep 60
+        done
